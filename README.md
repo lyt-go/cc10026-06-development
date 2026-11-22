@@ -77,5 +77,37 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 批量查询收益核验
+
+批量查询执行前先绑定优化计划和实际版本，再用「收益核验样本记录」判断计划是否
+达到收益阈值。核验口径：
+
+- 每个比较样本必须对应**同一种查询**（`query_key`，去掉具体分区值）、
+  **同一输入规模**（`input_scale`）和**同一实际计划版本**；
+- 对照版本与优化版本都要有成功实测耗时，多次实测取中位数；
+- 超时、缺少对照或版本不一致的样本进入 `excluded`，**不使用预估收益补入**；
+- 报告按「规则编号 + 计划版本」存档到 `data/query_benefit/verifications/`，
+  修改计划版本后必须重新核验，旧版本结论仍可追溯；
+- 达线结论同时给出可用数据范围（覆盖哪些查询类别、输入规模、排除多少样本）；
+- 每次执行把延迟明细、实际版本写入 `data/query_benefit/batches/`，
+  同一批查询重复触发时可核对两轮分别使用的计划版本。
+
+接口（`backend/app/routers/benefit.py`）：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/benefit/plans` | 读取各计划核验结论与达阈值规则 |
+| POST | `/api/benefit/verify` | 按样本记录核算收益并归档 |
+| GET | `/api/benefit/verifications/{rule_no}/{version}` | 读取历史核验报告 |
+| POST | `/api/benefit/plans/{entry_id}/revise` | 修改计划并切换实际版本 |
+| GET | `/api/benefit/batches/{batch_id}/preflight` | 执行前绑定计划与样本入口 |
+| POST | `/api/benefit/batches/{batch_id}/execute` | 执行并保留延迟明细 |
+| POST | `/api/benefit/batches/{batch_id}/runs` | 补齐实测样本 |
+| GET | `/api/benefit/batches/{batch_id}/rounds` | 核对两轮执行版本 |
+
+前端在「查询优化」「批量查询」工作台展示核验结论、数据范围和两轮版本核对。
+示例数据里 `BATC-0001` 是混合批次：短查询有成对实测并达阈值，长查询因超时
+缺少对照而单独列出、不计入收益。
+
 领域：数据工程
 子方向：数据分析与数据应用

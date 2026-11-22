@@ -8,6 +8,7 @@
 - 导出任务结果写入 data/exports/
 - API 注册快照写入 data/api/
 - 订阅审批记录写入 data/subscriptions/
+- 批量查询收益核验报告与延迟留档写入 data/query_benefit/
 """
 from __future__ import annotations
 
@@ -252,6 +253,45 @@ def list_exports() -> list[dict[str, Any]]:
         record = _read_json(f)
         if record:
             records.append(record)
+    return records
+
+
+# ========== 批量查询收益核验 ==========
+
+
+def write_benefit_verification(rule_no: str, plan_version: str, report: dict[str, Any]) -> None:
+    """写入某个优化计划某个版本的收益核验报告，供重复核验时追溯。"""
+    report["_verified_at"] = report.get("verified_at") or _now_iso()
+    _write_json(
+        DATA_ROOT / "query_benefit" / "verifications" / f"{rule_no}-{plan_version}.json",
+        report,
+    )
+
+
+def read_benefit_verification(rule_no: str, plan_version: str) -> dict[str, Any]:
+    return _read_json(
+        DATA_ROOT / "query_benefit" / "verifications" / f"{rule_no}-{plan_version}.json", {})
+
+
+def write_benefit_batch(batch_id: int, batch_no: str, record: dict[str, Any]) -> None:
+    """保留单次批量执行的延迟明细、实际计划版本和核验依据。"""
+    _write_json(
+        DATA_ROOT / "query_benefit" / "batches" / f"{batch_id:06d}-{batch_no}.json",
+        record,
+    )
+
+
+def list_benefit_batches(batch_id: int | None = None) -> list[dict[str, Any]]:
+    """列出批量执行留档；可按批量任务编号过滤。"""
+    _ensure_dir(DATA_ROOT / "query_benefit" / "batches")
+    records = []
+    for path in sorted((DATA_ROOT / "query_benefit" / "batches").glob("*.json")):
+        record = _read_json(path)
+        if not record:
+            continue
+        if batch_id is not None and int(record.get("batch_id", 0)) != batch_id:
+            continue
+        records.append(record)
     return records
 
 
